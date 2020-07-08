@@ -14,6 +14,8 @@ struct State {
     sc_desc: wgpu::SwapChainDescriptor,
     swap_chain: wgpu::SwapChain,
 
+    render_pipeline: wgpu::RenderPipeline,
+
     size: winit::dpi::PhysicalSize<u32>,
 }
 
@@ -49,6 +51,61 @@ impl State {
 
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
+        let vs_src = include_str!("shader.vert");
+        let fs_src = include_str!("shader.frag");
+
+        let mut compiler = shaderc::Compiler::new().unwrap();
+
+        let vs_spirv = compiler.compile_into_spirv(vs_src, shaderc::ShaderKind::Vertex, "shader.vert", "main", None).unwrap();
+        let fs_spirv = compiler.compile_into_spirv(fs_src, shaderc::ShaderKind::Fragment, "shader.frag", "main", None).unwrap();
+
+        let vs_data = wgpu::read_spirv(std::io::Cursor::new(vs_spirv.as_binary_u8())).unwrap();
+        let fs_data = wgpu::read_spirv(std::io::Cursor::new(fs_spirv.as_binary_u8())).unwrap();
+
+        let vs_module = device.create_shader_module(&vs_data);
+        let fs_module = device.create_shader_module(&fs_data);
+
+        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            bind_group_layouts: &[],
+        });
+        
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            layout: &render_pipeline_layout,
+            vertex_stage: wgpu::ProgrammableStageDescriptor {
+                module: &vs_module,
+                entry_point: "main",
+            },
+            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+                module: &fs_module,
+                entry_point: "main",
+            }),
+            rasterization_state: Some(wgpu::RasterizationStateDescriptor {
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: wgpu::CullMode::Back,
+                depth_bias: 0,
+                depth_bias_slope_scale: 0.0,
+                depth_bias_clamp: 0.0,
+            }),
+            color_states: &[
+                wgpu::ColorStateDescriptor {
+                    format: sc_desc.format,
+                    color_blend: wgpu::BlendDescriptor::REPLACE,
+                    alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                    write_mask: wgpu::ColorWrite::ALL,
+                },
+            ],
+            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+            depth_stencil_state: None,
+            vertex_state: wgpu::VertexStateDescriptor {
+                index_format: wgpu::IndexFormat::Uint16,
+                vertex_buffers: &[],
+            },
+            sample_count: 1,
+            sample_mask: !0,
+            alpha_to_coverage_enabled: false,
+        });
+
+
         Self {
             surface,
             adapter,
@@ -56,6 +113,7 @@ impl State {
             queue,
             sc_desc,
             swap_chain,
+            render_pipeline,
             size,
         }
 
@@ -85,7 +143,7 @@ impl State {
     });
 
         {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 color_attachments: &[
                     wgpu::RenderPassColorAttachmentDescriptor {
                         attachment: &frame.view,
@@ -102,6 +160,9 @@ impl State {
                 ],
                 depth_stencil_attachment: None,
             });
+
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw(0..3,0..1);
         }
         self.queue.submit(&[
             encoder.finish()
