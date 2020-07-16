@@ -1,5 +1,5 @@
 [package]
-name = "graphics"
+name = "grafica"
 version = "0.1.0"
 authors = ["nacho <sabauflorin28@gmail.com>"]
 edition = "2018"
@@ -12,4 +12,6 @@ winit = "0.20"
 wgpu = "0.5.0"
 futures = "0.3.4"
 shaderc = "0.6"
+bytemuck = "1.2.0"
+cgmath = "0.17.0"
 
